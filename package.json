@@ -1,0 +1,40 @@
+{
+	"name": "directus-extension-whitebox",
+	"version": "1.0.4",
+	"keywords": [
+		"directus",
+		"directus-extension",
+		"directus-custom-hook"
+	],
+	"directus:extension": {
+		"type": "hook",
+		"path": "dist/index.js",
+		"source": "src/index.js",
+		"host": "^9.2.1"
+	},
+	"files": [
+		"dist"
+	],	
+	"main": "./dist/index.js",
+	"scripts": {
+		"build": "directus-extension build",
+		"start": "npm run build -- --watch"
+	},
+	"devDependencies": {
+		"@directus/extensions-sdk": "9.10.0"
+	},
+	"dependencies": {
+		"aguid": "^2.0.0",
+		"axios": "^0.27.2",
+		"bluebird": "^3.7.2",
+		"form-data": "^4.0.0",
+		"fs-ext": "^2.0.0",
+		"fs-extra-promise": "^1.0.1",
+		"glob-promise": "^4.2.2",
+		"hasha": "^5.2.2",
+		"node-machine-id": "^1.1.12",
+		"queue": "^6.0.2",
+		"throttle-debounce": "^5.0.0",
+		"uuid": "^8.3.2"
+	}
+}

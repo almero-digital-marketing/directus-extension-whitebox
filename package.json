@@ -1,6 +1,6 @@
 {
 	"name": "directus-extension-whitebox",
-	"version": "1.0.4",
+	"version": "1.1.1",
 	"keywords": [
 		"directus",
 		"directus-extension",
@@ -14,7 +14,7 @@
 	},
 	"files": [
 		"dist"
-	],	
+	],
 	"main": "./dist/index.js",
 	"scripts": {
 		"build": "directus-extension build",
@@ -27,11 +27,14 @@
 		"aguid": "^2.0.0",
 		"axios": "^0.27.2",
 		"bluebird": "^3.7.2",
+		"deepdash": "^5.3.9",
 		"form-data": "^4.0.0",
 		"fs-ext": "^2.0.0",
 		"fs-extra-promise": "^1.0.1",
 		"glob-promise": "^4.2.2",
 		"hasha": "^5.2.2",
+		"js-yaml": "^4.1.0",
+		"lodash": "^4.17.21",
 		"node-machine-id": "^1.1.12",
 		"queue": "^6.0.2",
 		"throttle-debounce": "^5.0.0",

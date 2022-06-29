@@ -11,10 +11,12 @@ const hasha = require('hasha')
 const path = require('path')
 const glob = require('glob-promise')
 const fs = require('fs-extra-promise')
-const { throttle } = require('throttle-debounce')
+const { throttle, debounce } = require('throttle-debounce')
+const yaml = require('js-yaml');
+const _ = require('lodash')
+require('deepdash')(_)
 
 export default async ({ filter, action, init }, options) => {
-	// console.log(options)
 	const stamp = Date.now()
 	const machineId = machineIdSync() + '_' + os.hostname() + '_' + os.userInfo().username
 	let queue = Queue({
@@ -24,6 +26,8 @@ export default async ({ filter, action, init }, options) => {
 	const uploadsFolder = path.resolve(options.env['STORAGE_LOCAL_ROOT'])
 	const changes = new Set()
 	const itemDepth = [new Array(4).fill('*').join('.')]
+	const runtimeFolder = path.join(options.env['INIT_CWD'], 'runtime')
+	await fs.emptyDir(runtimeFolder)
 
 	const { ItemsService } = options.services;
 	const schema = await options.getSchema()
@@ -96,7 +100,7 @@ export default async ({ filter, action, init }, options) => {
 								if (!options.env['WHITEBOX_GLOBAL']) {
 									uploadHeaders = {
 										expire: options.env['WHITEBOX_EXPIRE'] || '10 days',
-										context: machineId
+										context: data.context
 									}
 								}
 								let form = new FormData()
@@ -143,6 +147,7 @@ export default async ({ filter, action, init }, options) => {
 
 	function dataItem(collection, item) {
 		const refId = '/' + collection + '/' + item.id
+		const meta = _.mapKeysDeep(item, (value, key) => _.camelCase(key))
 		const data = {
 			passportId: uuidv1(),
 			date: item.date_updated || item.data_created,
@@ -152,7 +157,7 @@ export default async ({ filter, action, init }, options) => {
 			data: {
 				stamp,
 				importDate: new Date(),
-				meta: item
+				meta
 			}
 		}
 		if (!options.env['WHITEBOX_GLOBAL']) {
@@ -162,33 +167,39 @@ export default async ({ filter, action, init }, options) => {
 		return data
 	}
 
-	const clearCache = throttle(1000, () => {
-		if (!options.env['WHITEBOX_CLEAR']) {
-			queue.push(() => {
-				console.log('Clear cache')
-				let data = {}
-				if (!options.env['WHITEBOX_GLOBAL']) data.context = machineId
-				return api('feed', '/api/catalog/clear/cache', data)
-			})
-		}
-	})
+	async function dumpDocument(data) {
+		const document = yaml.dump(data.data.meta)
+		const documentFile = path.join(runtimeFolder, data.refId + '.yml')
+		await fs.outputFileAsync(documentFile, document, 'utf8')
+		return documentFile
+	}
 
+	let importDocumentTimeouts = {}
 	async function importDocument({key, collection}, context) {
-		const itemsService = new ItemsService(collection, {
-			schema: context.schema,
-		})
-		let item = await itemsService.readOne(key, { 
-			fields: itemDepth,
-		})
-
-		if (item.target != 'whitebox' || !item.layout) return
-		if (!options.env['WHITEBOX_CLEAR']) {
-			const data = dataItem(collection, item)
-			queue.push(() => {
-				console.log('Document imported:', data.refId)
-				return api('feed', '/api/catalog/keep/one', data)
+		const timeoutId = `/${collection}/${key}`
+		clearTimeout(importDocumentTimeouts[timeoutId])
+		importDocumentTimeouts[timeoutId] = setTimeout(async () => {
+			const itemsService = new ItemsService(collection, {
+				schema: context.schema,
 			})
-		}
+	
+			let item = await itemsService.readOne(key, { 
+				fields: itemDepth,
+			})
+	
+			if (item.target != 'whitebox' || !item.layout) return
+			if (!options.env['WHITEBOX_CLEAR']) {
+				const data = dataItem(collection, item)
+	
+				const document = await dumpDocument(data)
+	
+				queue.push(() => {
+					console.log('Document imported:', document)
+					return api('feed', '/api/catalog/keep/one', data)
+				})
+			}
+		}, 1000)
+
 	}
 	
 	function deleteDocument({key, collection}, context) {
@@ -217,7 +228,7 @@ export default async ({ filter, action, init }, options) => {
 
 	async function followRelations({key, collection}, context) {
 		const id = `/${collection}/${key}`
-		if (changes.has(id)) return
+		if (!key || changes.has(id)) return
 		changes.add(id)
 
 		const related = context.schema.relations.filter(relation => relation.collection == collection)
@@ -225,6 +236,7 @@ export default async ({ filter, action, init }, options) => {
 			const itemsService = new ItemsService(collection, {
 				schema: context.schema,
 			})
+			
 			const item = await itemsService.readOne(key, { fields: ['*'] })
 			if (relation.related_collection != null) {
 				await changeRelatedItems({ key: item[relation.field], collection: relation.related_collection }, context)
@@ -239,7 +251,7 @@ export default async ({ filter, action, init }, options) => {
 
 	async function changeRelatedItems({key, collection}, context) {
 		const id = `/${collection}/${key}`
-		if (changes.has(id)) return
+		if (!key || changes.has(id)) return
 		changes.add(id)
 
 		const related = context.schema.relations
@@ -276,9 +288,8 @@ export default async ({ filter, action, init }, options) => {
 		console.log('Items create action')
 		try {
 			await importDocument(meta, context)
-			clearCache()
 		} catch (e) {
-			console.error('Items create action failed', e)
+			console.error('Items create action failed', meta, e)
 		}
 	})
 	filter('items.update', async (payload, meta, context) => {
@@ -298,10 +309,10 @@ export default async ({ filter, action, init }, options) => {
 				await importDocument({key, collection: meta.collection}, context)
 				await changeRelatedItems({key, collection: meta.collection}, context)
 			}
+
 			await processChanges(context)
-			clearCache()
 		} catch (e) {
-			console.error('Items update action failed', meta.collection, key, e)
+			console.error('Items update action failed', meta, e)
 		}
 	})
 	filter('items.delete', async (keys, { collection }, context) => {
@@ -311,7 +322,6 @@ export default async ({ filter, action, init }, options) => {
 				await changeRelatedItems({key, collection, changes}, context)
 			}
 			await processChanges(context)
-			clearCache()
 		} catch (e) {
 			console.error('Items delete filter failed', e)
 		}
@@ -323,9 +333,8 @@ export default async ({ filter, action, init }, options) => {
 				await deleteDocument({key, collection: meta.collection}, context)
 			}
 			await processChanges(context)
-			clearCache()
 		} catch (e) {
-			console.error('Items delete action failed', e)
+			console.error('Items delete action failed', meta, e)
 		}
 	})
 	action('files.upload', sync)
@@ -347,8 +356,11 @@ export default async ({ filter, action, init }, options) => {
 				if (layouts.indexOf(item.layout) == -1) layouts.push(item.layout)
 				if (!options.env['WHITEBOX_CLEAR']) {
 					const data = dataItem(documentCollection.collection, item)
+
+					const document = await dumpDocument(data)
+
 					queue.push(() => {
-						console.log('Document imported:', data.refId)
+						console.log('Document imported:', document)
 						return api('feed', '/api/catalog/keep/one', data)
 					})
 				}
@@ -364,8 +376,16 @@ export default async ({ filter, action, init }, options) => {
 				}) 
 			}
 		}
-		clearCache()
 		await sync()
 		console.log('Application started!');
 	})
+
+	queue.on('success', debounce(1000, () => {
+		if (!options.env['WHITEBOX_CLEAR']) {
+			console.log('Clear cache')
+			let data = {}
+			if (!options.env['WHITEBOX_GLOBAL']) data.context = machineId
+			return api('feed', '/api/catalog/clear/cache', data)
+		}
+	}))
 }

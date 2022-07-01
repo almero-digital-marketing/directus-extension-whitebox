@@ -1,6 +1,6 @@
 {
 	"name": "directus-extension-whitebox",
-	"version": "1.1.1",
+	"version": "1.2.3",
 	"keywords": [
 		"directus",
 		"directus-extension",
@@ -18,7 +18,8 @@
 	"main": "./dist/index.js",
 	"scripts": {
 		"build": "directus-extension build",
-		"start": "npm run build -- --watch"
+		"start": "npm run build -- --watch",
+		"prepare": "npm run build"
 	},
 	"devDependencies": {
 		"@directus/extensions-sdk": "9.10.0"

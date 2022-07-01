@@ -185,7 +185,7 @@ export default async ({ filter, action, init }, options) => {
 			return collection.fields.target && collection.fields.target.defaultValue == 'whitebox'
 		})
 	
-		console.log('Document collections:', documentCollections.join(', '))
+		console.log('Document collections:', documentCollections.map(documentCollection => documentCollection.collection).join(', '))
 		for(let documentCollection of documentCollections) {
 			const itemsService = new ItemsService(documentCollection.collection, { schema })
 	

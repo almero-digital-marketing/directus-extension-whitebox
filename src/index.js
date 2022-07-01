@@ -185,14 +185,13 @@ export default async ({ filter, action, init }, options) => {
 			return collection.fields.target && collection.fields.target.defaultValue == 'whitebox'
 		})
 	
-		console.log('Document collections:', documentCollections.length)
+		console.log('Document collections:', documentCollections.join(', '))
 		for(let documentCollection of documentCollections) {
-			const itemsService = new ItemsService(documentCollection.collection, {
-				schema,
-			})
+			const itemsService = new ItemsService(documentCollection.collection, { schema })
 	
 			const items = await itemsService.readByQuery({ 
-				fields: itemDepth 
+				fields: itemDepth,
+				limit: -1
 			})
 			console.log(`Collection [${documentCollection.collection}]:`, items.length)
 			for(let item of items) {

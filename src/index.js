@@ -31,8 +31,11 @@ export default async ({ filter, action, init }, options) => {
 	await fs.emptyDir(runtimeFolder)
 
 	const { ItemsService } = options.services;
-	// console.log(JSON.stringify(schema, null, 2))
-	
+
+	const schemaDump = yaml.dump(await options.getSchema())
+	const schemaFile = path.join(runtimeFolder, 'schema.yml')
+	await fs.outputFileAsync(schemaFile, schemaDump, 'utf8')
+
 	let clear = Promise.resolve()
 	if (options.env.WHITEBOX_CLEAR || options.env.WHITEBOX_REFRESH) {
 		console.log('Clear whtiebox data')
@@ -205,9 +208,9 @@ export default async ({ filter, action, init }, options) => {
 					if (documentsSyncStatus[data.refId] != checksum) {
 						documentsSyncStatus[data.refId] = checksum
 	
-						const document = yaml.dump(data.data.meta)
+						const documentDump = yaml.dump(data.data.meta)
 						const documentFile = path.join(runtimeFolder, data.refId + '.yml')
-						await fs.outputFileAsync(documentFile, document, 'utf8')
+						await fs.outputFileAsync(documentFile, documentDump, 'utf8')
 				
 						queue.push(() => {
 							console.log('Import document:', documentFile)

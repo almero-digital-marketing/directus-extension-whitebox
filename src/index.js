@@ -26,8 +26,8 @@ export default async ({ filter, action, init }, options) => {
 		autostart: true
 	})
 	const uploadsFolder = path.resolve(options.env['STORAGE_LOCAL_ROOT'])
-	const itemDepth = [new Array(4).fill('*').join('.')]
-	const runtimeFolder = path.join(options.env['INIT_CWD'], 'runtime')
+	const defaultFields = [new Array(4).fill('*').join('.')]
+	const runtimeFolder = './runtime'
 	await fs.emptyDir(runtimeFolder)
 
 	const { ItemsService } = options.services;
@@ -39,8 +39,9 @@ export default async ({ filter, action, init }, options) => {
 	let clear = Promise.resolve()
 	if (options.env.WHITEBOX_CLEAR || options.env.WHITEBOX_REFRESH) {
 		console.log('Clear whtiebox data')
-		let data = {}
-		if (!options.env['WHITEBOX_GLOBAL']) data.context = machineId
+		let data = {
+			context: options.env['WHITEBOX_GLOBAL'] != 'local' ? 'shared' : machineId,
+		}
 		clear = api('feed', '/api/catalog/clear', data)
 		.then(() => {
 			if (options.clear) {
@@ -81,21 +82,20 @@ export default async ({ filter, action, init }, options) => {
 				// mikser.diagnostics.log(this, 'debug', `[whitebox] File locked: ${file}`)
 				let relative = file.replace(uploadsFolder, '')
 				let data = {
-					file: relative
+					file: relative,
+					context: options.env['WHITEBOX_GLOBAL'] != 'local' ? 'shared' : machineId,
 				}
-				if (!options.env['WHITEBOX_GLOBAL']) data.context = machineId
 				return axios
 				.post(options.env['WHITEBOX_STORAGE_URL'] + '/' + options.env['WHITEBOX_STORAGE_TOKEN'] + '/hash', data)
 				.then((response) => {
 					return hasha.fromFile(file, { algorithm: 'md5' }).then((hash) => {
 							// mikser.diagnostics.log(this, 'debug', `[whitebox] MD5: ${file} ${hash} ${response.data.hash}`)
 							if (!response.data.success || hash != response.data.hash) {
-								let uploadHeaders = {}
-								if (!options.env['WHITEBOX_GLOBAL']) {
-									uploadHeaders = {
-										expire: options.env['WHITEBOX_EXPIRE'] || '10 days',
-										context: data.context
-									}
+								let uploadHeaders = {
+									context: options.env['WHITEBOX_GLOBAL'] != 'local' ? 'shared' : machineId,
+								}
+								if (options.env['WHITEBOX_GLOBAL'] != 'local') {
+									uploadHeaders.expire = options.env['WHITEBOX_EXPIRE'] || '10 days'
 								}
 								let form = new FormData()
 								form.append(relative, fs.createReadStream(file))
@@ -148,14 +148,14 @@ export default async ({ filter, action, init }, options) => {
 			vaultId: aguid(refId),
 			refId: item.url || refId,
 			type: 'directus.' + item.layout,
+			context: options.env['WHITEBOX_GLOBAL'] != 'local' ? 'shared' : machineId,
 			data: {
 				stamp,
 				importDate: new Date(),
 				meta
 			}
 		}
-		if (!options.env['WHITEBOX_GLOBAL']) {
-			data.context = machineId
+		if (options.env['WHITEBOX_GLOBAL'] != 'local') {
 			data.expire = options.env.WHITEBOX_EXPIRE || '10days'
 		}
 		return data
@@ -191,12 +191,12 @@ export default async ({ filter, action, init }, options) => {
 		console.log('Document collections:', documentCollections.map(documentCollection => documentCollection.collection).join(', '))
 		for(let documentCollection of documentCollections) {
 			const itemsService = new ItemsService(documentCollection.collection, { schema })
-	
+			const fields = schema.collections[documentCollection.collection].fields.fields?.defaultValue?.split(',').map(field => field.trim()) || defaultFields
 			const items = await itemsService.readByQuery({ 
-				fields: itemDepth,
+				fields,
 				limit: -1
 			})
-			console.log(`Collection [${documentCollection.collection}]:`, items.length)
+			console.log(`Collection [${documentCollection.collection}]:`, items.length, fields)
 			for(let item of items) {
 				if (item.target != 'whitebox' || !item.layout) continue
 				if (layouts.indexOf(item.layout) == -1) layouts.push(item.layout)
@@ -257,8 +257,9 @@ export default async ({ filter, action, init }, options) => {
 	queue.on('success', debounce(1000, () => {
 		if (!options.env['WHITEBOX_CLEAR']) {
 			console.log('Clear cache')
-			let data = {}
-			if (!options.env['WHITEBOX_GLOBAL']) data.context = machineId
+			let data = {
+				context: options.env['WHITEBOX_GLOBAL'] != 'local' ? 'shared' : machineId
+			}
 			return api('feed', '/api/catalog/clear/cache', data)
 		}
 	}))

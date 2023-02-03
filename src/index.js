@@ -1,5 +1,3 @@
-import { async } from 'hasha'
-
 const { machineIdSync } = require('node-machine-id')
 const aguid = require('aguid')
 const os = require('os')
@@ -139,9 +137,10 @@ export default async ({ filter, action, init }, options) => {
 		}).then(() => delete pendingUploads[file])
 	}
 
-	function dataItem(collection, item) {
-		const refId = '/' + collection + '/' + item.id
+	function dataItem(collection, item, schema) {
+		const refId = item.href || ('/' + collection + '/' + item[schema.collections[collection].primary])
 		const meta = _.mapKeysDeep(item, (value, key) => _.camelCase(key))
+		meta.href = meta.href || refId
 		const data = {
 			passportId: uuidv1(),
 			date: item.date_updated || item.data_created,
@@ -157,6 +156,9 @@ export default async ({ filter, action, init }, options) => {
 		}
 		if (options.env['WHITEBOX_GLOBAL'] != 'local') {
 			data.expire = options.env.WHITEBOX_EXPIRE || '10days'
+		}
+		if (options.env['WHITEBOX_VAULTS']) {
+			data.vaults = options.env['WHITEBOX_VAULTS']
 		}
 		return data
 	}
@@ -202,7 +204,7 @@ export default async ({ filter, action, init }, options) => {
 				if (layouts.indexOf(item.layout) == -1) layouts.push(item.layout)
 	
 				if (!options.env['WHITEBOX_CLEAR']) {
-					const data = dataItem(documentCollection.collection, item)
+					const data = dataItem(documentCollection.collection, item, schema)
 	
 					let checksum = await hasha.async(JSON.stringify(data.data.meta))
 					if (documentsSyncStatus[data.refId] != checksum) {
